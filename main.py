@@ -16,7 +16,7 @@ SECRETS_DIR = BASE_DIR / "secrets"
 
 def first_time_setup() -> None:
     print("\nWelcome to SecureAttendance — Team 3: Crusaders")
-    print("First-time setup: register your instructor account.")
+    print("First-time setup: create the first administrator account.")
     username = input("Create instructor username: ").strip()
     if not username:
         raise ValueError("Username cannot be empty.")

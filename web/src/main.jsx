@@ -51,7 +51,7 @@ function AuthPage({ configured, onAuth }) {
         setConfirm("");
         setError("Account created. Sign in with your new credentials.");
       } else {
-        onAuth(result.username);
+        onAuth(result.username, result.role);
       }
     } catch (err) {
       setError(err.message);
@@ -80,15 +80,15 @@ function AuthPage({ configured, onAuth }) {
       <div className="mobile-brand"><Brand /></div>
       <div className="auth-card">
         <div className="auth-card-top"><span className="section-label">INSTRUCTOR PORTAL</span><span className="secure-chip"><i /> LOCAL & SECURE</span></div>
-        <h2>{registering ? "Create your account" : "Welcome back"}</h2>
-        <p className="auth-subtitle">{registering ? "Set up the instructor account for your demo." : "Sign in to open the attendance dashboard."}</p>
+        <h2>{registering ? "Create admin account" : "Welcome back"}</h2>
+        <p className="auth-subtitle">{registering ? "The first account is the administrator and can add instructor accounts." : "Sign in to open the attendance dashboard."}</p>
         <form onSubmit={submit}>
           <label>Instructor username<input autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. instructor" /></label>
           <label>Password<input autoComplete={registering ? "new-password" : "current-password"} required minLength={registering ? 10 : undefined} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={registering ? "At least 10 characters" : "Enter your password"} /></label>
           {registering && <label>Confirm password<input autoComplete="new-password" required type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Type it again" /></label>}
           {error && <div className={`form-message ${error.startsWith("Account created") ? "success-message" : ""}`} role="status">{error}{!registering && remaining < 3 && remaining > 0 ? ` ${remaining} attempt(s) remain.` : ""}</div>}
           {!registering && remaining === 0 && <div className="form-message">Three sign-in attempts used. Restart the showcase to start a new login session.</div>}
-          <button className="button button-primary auth-submit" disabled={busy || (!registering && remaining === 0)}>{busy ? "Please wait…" : registering ? "Create instructor account" : "Sign in securely"}<span>↗</span></button>
+          <button className="button button-primary auth-submit" disabled={busy || (!registering && remaining === 0)}>{busy ? "Please wait…" : registering ? "Create admin account" : "Sign in securely"}<span>↗</span></button>
         </form>
         <div className="auth-note"><span className="tiny-lock">▣</span>{registering ? "Your password is hashed with Argon2id. It is never stored as plain text." : "Three attempts are allowed per login session."}</div>
       </div>
@@ -103,6 +103,7 @@ function Icon({ name }) {
     shield: <><path d="M12 3 19 6v5c0 4.5-3 7.5-7 10-4-2.5-7-5.5-7-10V6l7-3Z"/><path d="m9 12 2 2 4-4"/></>,
     demo: <><path d="M8 5H5v14h14v-3"/><path d="M10 14 20 4"/><path d="M13 4h7v7"/><path d="M5 8h4"/></>,
     tests: <><path d="m9 11 2 2 4-4"/><path d="M12 3 5 6v5c0 4.5 3 7.5 7 10 4-2.5 7-5.5 7-10V6l-7-3Z"/></>,
+    users: <><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
     logout: <><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></>,
     chevron: <path d="m9 18 6-6-6-6"/>,
     check: <path d="m5 12 4 4L19 6"/>,
@@ -110,8 +111,9 @@ function Icon({ name }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
 
-function Dashboard({ username, onLogout }) {
+function Dashboard({ username, role, onLogout }) {
   const [records, setRecords] = useState([]);
+  const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [notice, setNotice] = useState(null);
@@ -130,6 +132,21 @@ function Dashboard({ username, onLogout }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadAccounts() {
+    try {
+      const data = await request("/api/accounts");
+      setAccounts(data.accounts);
+    } catch (error) {
+      setNotice({ type: "error", text: error.message });
+    }
+  }
+
+  async function createInstructor(payload) {
+    const result = await request("/api/accounts/create", { method: "POST", body: JSON.stringify(payload) });
+    setAccounts(result.accounts);
+    setNotice({ type: "success", text: result.message });
   }
 
   useEffect(() => { loadRecords(); }, []);
@@ -210,6 +227,7 @@ function Dashboard({ username, onLogout }) {
       <Brand compact />
       <div className="sidebar-section">WORKSPACE</div>
       <button className={`nav-item ${activeView === "attendance" ? "active" : ""}`} onClick={() => { setActiveView("attendance"); setShowModal(false); }}><Icon name="grid" />Attendance overview</button>
+      {role === "admin" && <><div className="sidebar-section security-section">ACCESS CONTROL</div><button className={`nav-item ${activeView === "accounts" ? "active" : ""}`} onClick={() => { setActiveView("accounts"); setShowModal(false); loadAccounts(); }}><Icon name="users" />Instructor accounts</button></>}
       <div className="sidebar-section security-section">SECURITY DEMOS</div>
       <button className={`nav-item ${activeView === "demo" ? "active" : ""}`} onClick={runDemo}><Icon name="demo" />Tampering demo</button>
       <button className={`nav-item ${activeView === "tests" ? "active" : ""}`} onClick={runTests}><Icon name="tests" />Security test suite</button>
@@ -220,11 +238,12 @@ function Dashboard({ username, onLogout }) {
       </div>
     </aside>
     <main className="main-area">
-      <header className="topbar"><div className="breadcrumb">SECUREATTENDANCE <Icon name="chevron" /> <strong>{activeView === "attendance" ? "ATTENDANCE" : activeView === "demo" ? "TAMPERING DEMO" : "SECURITY TESTS"}</strong></div><div className="user-pill"><span className="avatar">{username.slice(0, 1).toUpperCase()}</span><span>{username}</span><i /></div></header>
+      <header className="topbar"><div className="breadcrumb">SECUREATTENDANCE <Icon name="chevron" /> <strong>{activeView === "attendance" ? "ATTENDANCE" : activeView === "demo" ? "TAMPERING DEMO" : activeView === "accounts" ? "INSTRUCTOR ACCOUNTS" : "SECURITY TESTS"}</strong></div><div className="user-pill"><span className="avatar">{username.slice(0, 1).toUpperCase()}</span><span>{username}</span><span className={`role-badge role-${role}`}>{role}</span><i /></div></header>
       <div className="content-area">
         {notice && <div className={`toast toast-${notice.type}`} role="status"><span>{notice.type === "success" ? <Icon name="check" /> : "!"}</span>{notice.text}<button onClick={() => setNotice(null)}>×</button></div>}
-        <div className="page-heading"><div><div className="eyebrow muted-eyebrow">{activeView === "attendance" ? "BOOTCAMP · DAILY REGISTER" : "LIVE CRYPTOGRAPHY DEMONSTRATION"}</div><h1>{activeView === "attendance" ? "Attendance overview" : activeView === "demo" ? "Tampering detection" : "Security test suite"}</h1><p>{activeView === "attendance" ? "Manage student attendance and protect every saved update." : activeView === "demo" ? "Watch HMAC reject an unauthorized change to a temporary copy." : "Run the project checks and show each result right here."}</p></div><div className="date-chip"><span className="calendar-dot">◷</span>{today}</div></div>
+        <div className="page-heading"><div><div className="eyebrow muted-eyebrow">{activeView === "attendance" ? "BOOTCAMP · DAILY REGISTER" : activeView === "accounts" ? "ROLE-BASED ACCESS CONTROL" : "LIVE CRYPTOGRAPHY DEMONSTRATION"}</div><h1>{activeView === "attendance" ? "Attendance overview" : activeView === "demo" ? "Tampering detection" : activeView === "accounts" ? "Instructor accounts" : "Security test suite"}</h1><p>{activeView === "attendance" ? "Manage student attendance and protect every saved update." : activeView === "demo" ? "Watch HMAC reject an unauthorized change to a temporary copy." : activeView === "accounts" ? "Create instructor accounts and review their assigned roles." : "Run the project checks and show each result right here."}</p></div><div className="date-chip"><span className="calendar-dot">◷</span>{today}</div></div>
 
+        {activeView === "accounts" ? <AccountManagement accounts={accounts} onCreate={createInstructor} /> : <>
         <section className="metric-grid">
           <Metric icon="◎" label="TOTAL STUDENTS" value={loading ? "—" : records.length} detail="In the bootcamp register" color="blue" />
           <Metric icon="✓" label="PRESENT" value={loading ? "—" : presentCount} detail="Latest recorded status" color="green" />
@@ -249,10 +268,56 @@ function Dashboard({ username, onLogout }) {
 
         <section className="demo-strip"><div className="demo-icon"><Icon name="shield" /></div><div className="demo-copy"><strong>Show the security controls</strong><span>Run the tampering demo or execute all automated security tests in this browser.</span></div><button className="button button-dark" onClick={runDemo}>Run tampering demo <Icon name="chevron" /></button><button className="button button-outline test-cta" onClick={runTests}>Run test suite</button></section>
         <div className="privacy-note"><Icon name="shield" /><span><strong>Privacy by design</strong> Attendance is decrypted only after sign-in. This demo server listens on this computer only.</span></div>
+        </>}
       </div>
     </main>
     {showModal && <ResultsModal kind={activeView} result={testResults} running={testRunning} onClose={() => { setShowModal(false); setActiveView("attendance"); }} onRerun={activeView === "tests" ? runTests : runDemo} />}
   </div>;
+}
+
+function AccountManagement({ accounts, onCreate }) {
+  const [formOpen, setFormOpen] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setSaving(true);
+    try {
+      await onCreate({ username, password, confirm_password: confirm });
+      setUsername("");
+      setPassword("");
+      setConfirm("");
+      setFormOpen(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <section className="accounts-layout">
+    <div className="records-card account-list-card">
+      <div className="records-header"><div><h2>Team accounts</h2><p>Passwords are never shown. Only usernames and roles appear here.</p></div><button className="button button-primary" onClick={() => { setError(""); setFormOpen(!formOpen); }}>{formOpen ? "Cancel" : "+ Add instructor"}</button></div>
+      {formOpen && <form className="account-form" onSubmit={submit}>
+        <div className="account-form-heading"><strong>Create instructor account</strong><span>New accounts receive the Instructor role.</span></div>
+        <label>Username<input autoComplete="off" required value={username} onChange={(event) => setUsername(event.target.value)} placeholder="e.g. instructor2" /></label>
+        <label>Password<input autoComplete="new-password" required minLength="10" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 10 characters" /></label>
+        <label>Confirm password<input autoComplete="new-password" required type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} placeholder="Type it again" /></label>
+        {error && <div className="form-message">{error}</div>}
+        <button className="button button-primary" disabled={saving}>{saving ? "Creating…" : "Create instructor"}</button>
+      </form>}
+      <div className="account-table-wrap"><table className="account-table"><thead><tr><th>USERNAME</th><th>ROLE</th><th>CREATED</th><th>ACCESS</th></tr></thead><tbody>
+        {accounts.map((account) => <tr key={account.username}><td><div className="student-cell"><span className="student-avatar">{account.username.slice(0, 1).toUpperCase()}</span><strong>{account.username}</strong></div></td><td><span className={`role-badge role-${account.role}`}>{account.role}</span></td><td>{account.created_at}</td><td><span className="access-label">{account.role === "admin" ? "Manage accounts + attendance" : "Attendance + security demos"}</span></td></tr>)}
+      </tbody></table></div>
+      <div className="records-foot"><span><span className="lock-small">▣</span> Each account has an individual Argon2id password hash.</span><span>{accounts.length} account{accounts.length === 1 ? "" : "s"}</span></div>
+    </div>
+    <div className="rbac-explainer"><div className="demo-icon"><Icon name="shield" /></div><div><strong>Role-based access control</strong><p>Admins can create instructor accounts. Instructors can view and update attendance, verify integrity, and run the security demonstrations. The server checks each permission before performing the action.</p></div></div>
+  </section>;
 }
 
 function Metric({ icon, label, value, detail, color }) {
@@ -284,8 +349,8 @@ function App() {
     setSession((current) => ({ ...current, authenticated: false, username: null }));
   }
   if (checking) return <div className="boot-screen"><div className="boot-mark">SA</div><span>Starting secure local workspace…</span></div>;
-  if (session?.authenticated) return <Dashboard username={session.username} onLogout={logout} />;
-  return <AuthPage configured={Boolean(session?.configured)} onAuth={(username) => setSession((current) => ({ ...current, configured: true, authenticated: true, username }))} />;
+  if (session?.authenticated) return <Dashboard username={session.username} role={session.role} onLogout={logout} />;
+  return <AuthPage configured={Boolean(session?.configured)} onAuth={(username, role) => setSession((current) => ({ ...current, configured: true, authenticated: true, username, role }))} />;
 }
 
 createRoot(document.getElementById("root")).render(<App />);

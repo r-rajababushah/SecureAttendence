@@ -1,155 +1,161 @@
-./.venv-mac/bin/python run_showcase.py
-
 # SecureAttendance
 
 **Team 3 – Crusaders** · Innovation Hub, Dr. A.P.J. Abdul Kalam Technical University, Lucknow  
 **Hackathon:** Build It Secure
 
-SecureAttendance is a beginner-friendly local browser application for protecting a bootcamp's attendance records. It demonstrates password hashing, encryption at rest, and detection of unauthorized changes using real cryptographic libraries. The presenter uses the browser UI for registration, login, attendance changes, security demonstrations, and the automated test suite.
+SecureAttendance is a small local web app for recording bootcamp attendance safely. The instructor uses the browser UI to sign in, manage attendance, verify file integrity, and demonstrate the security protections.
 
-## Problem statement
+## The three problems this project solves
 
-A participant changed an Absent entry to Present, read other students' private records, and guessed an instructor password that had been stored as plain text. This application restricts record access to an authenticated instructor, encrypts saved data, and checks its integrity before trusting it.
+1. **Unauthorized attendance edits:** only a signed-in instructor can update a record. Changes to the saved encrypted file are detected.
+2. **Private attendance being read:** records are not returned before sign-in and are encrypted on disk.
+3. **Guessable instructor passwords:** passwords are stored as salted Argon2id hashes, not plain text. Login allows three attempts per session.
 
-## Objectives
+## Temporary demo login
 
-- Authenticate the instructor without storing a plain-text password.
-- Keep attendance confidential while it is saved on disk.
-- Detect edits to the encrypted attendance file.
-- Keep the program small enough to explain during a college hackathon.
+On a **fresh clone** with no existing account, the app asks you to create the first Admin account. For a temporary hackathon demo, enter:
 
-## Technologies, in plain language
+| Field | Demo value |
+| --- | --- |
+| Username | `demo-admin` |
+| Password | `SecureAttendDemo2026!` |
 
-- **Argon2id (`argon2-cffi`)** turns the instructor password into a one-way password hash. Each registration gets a random salt automatically. The salt is stored as part of the encoded hash and means equal passwords do not produce equal stored strings. Login checks a candidate password against the hash; it does not decrypt a password.
-- **AES-256-GCM (`cryptography`)** encrypts attendance with a 256-bit key and also authenticates the ciphertext. Confidentiality means someone who only reads the file cannot read names and statuses. Each save creates a fresh random 12-byte **nonce**. A nonce is a one-time value for a given AES-GCM key; reusing it can break security.
-- **HMAC-SHA256** uses a separate random 256-bit secret key to authenticate a canonical JSON representation of the envelope's version, nonce, and ciphertext. The program calls `hmac.compare_digest` and rejects invalid data before decrypting. AES-GCM already provides authenticated encryption; this additional HMAC is included to clearly demonstrate the hackathon's HMAC requirement. A valid HMAC shows possession of the integrity key, not which individual instructor made the record.
+Enter the password again when asked to confirm it. This account is **not pre-created or hardcoded in the application**; the registration screen stores only its Argon2id hash. The demo values are public by design, so use them only with fictional sample data. Never reuse them for a real account. If this project already has an account, use the username and password you previously chose; the hash cannot be reversed to recover that password.
 
-Three security goals are different:
+Because these demo credentials are printed here, they are not secret and must not be used to claim that this particular account is unguessable. They let a judge enter the temporary demo. To demonstrate password storage protection, create an additional Instructor account with a private password, then show that the account file stores only its salted hash. Argon2id protects stored hashes; it cannot make a public or weak password secret.
 
-- **Authentication:** prove the instructor's identity by checking their password hash.
-- **Confidentiality:** prevent unauthorized readers from understanding saved attendance using encryption.
-- **Integrity:** detect unauthorized changes using HMAC verification (and AES-GCM's own tag).
+The Admin can create Instructor accounts from **Instructor accounts** in the browser sidebar. Instructors can work with attendance and run the security demonstrations, but cannot create accounts.
 
-## Architecture and data flow
+## Install and run after cloning from GitHub
 
-`run_showcase.py` starts a local-only Python HTTP server and opens the React interface in the browser. The server handles registration, login, encrypted attendance changes, integrity checks, the temporary-copy tampering demo, and the automated tests. React runs locally from the bundled `web/assets/app.js`; it does not need a separate development server or internet connection. `main.py` remains available as a terminal fallback. `auth.py` stores and checks the Argon2id hash. `attendance_store.py` reads and writes attendance. `crypto_utils.py` generates/loads keys and performs encryption, decryption, and HMAC verification.
+The project uses Python 3.10 or newer. The React UI is already bundled in the repository, so Node.js is not needed to run the showcase. Python packages are installed once after cloning; after that, the whole browser application starts with one command.
 
-When the instructor saves an update, the app serializes the records in memory, encrypts them with AES-GCM and a new nonce, computes HMAC over the canonical envelope, then writes only the encrypted envelope to `data/attendance.enc`. When reading, it verifies HMAC first and only then decrypts. No plaintext JSON or CSV attendance file is created. The only unencrypted files contain the instructor username/hash and cryptographic keys; they are protected from Git and have restrictive permissions where supported.
+Replace `YOUR-USERNAME/YOUR-REPOSITORY` below with the GitHub repository address after the project is uploaded.
 
-## Folder structure
+### macOS or Linux
+
+```bash
+git clone https://github.com/YOUR-USERNAME/YOUR-REPOSITORY.git SecureAttendance
+cd SecureAttendance
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+./.venv/bin/python run_showcase.py
+```
+
+### Windows PowerShell
+
+```powershell
+git clone https://github.com/YOUR-USERNAME/YOUR-REPOSITORY.git SecureAttendance
+cd SecureAttendance
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe run_showcase.py
+```
+
+The last command starts a local server and opens the browser. Keep that terminal window open while presenting; press **Ctrl+C** to stop the server. The app listens on `127.0.0.1`, so it is for a demonstration on one computer, not for sharing over a network.
+
+### Start it later with one command
+
+After the install step, from the project folder:
+
+- macOS or Linux: `./.venv/bin/python run_showcase.py`
+- Windows: `.\.venv\Scripts\python.exe run_showcase.py`
+
+## Fictional test data
+
+On first setup, the application creates these sample records with **Absent** attendance for the current date:
+
+| Student ID | Name | Initial status |
+| --- | --- | --- |
+| S101 | Aditi Sharma | Absent |
+| S102 | Rahul Verma | Absent |
+| S103 | Neha Singh | Absent |
+
+These names are fictional demo data. Attendance updates are saved to `data/attendance.enc`; the program does not create a plaintext attendance JSON or CSV file. `data/` and `secrets/` are excluded by `.gitignore`. A new GitHub clone has no keys or attendance file, so the browser shows first-time Admin registration.
+
+## How the secure record system works
+
+### Authentication and account roles
+
+The browser asks for a username and password before showing any attendance. `auth.py` checks the password using Argon2id. Each account gets a random salt, and only the resulting password hash is stored in `secrets/instructor.json`.
+
+The first account has the **Admin** role and can create Instructor accounts. The server checks permissions on protected actions; hiding the account-management page in the browser is not the only access control. Students are not given accounts or attendance-write permissions.
+
+An account created by an earlier version of the project, which stored only one username and hash, is accepted as Admin so its existing login continues to work.
+
+### Confidentiality
+
+`attendance_store.py` serializes records in memory and `crypto_utils.py` encrypts them with AES-256-GCM before saving. Every save uses a fresh random 12-byte nonce. The separate encryption key is stored in `secrets/encryption.key`. Without authentication, the browser API does not return attendance records; reading `data/attendance.enc` reveals an encrypted envelope rather than student names and statuses.
+
+### Integrity
+
+`crypto_utils.py` computes HMAC-SHA256 over a canonical envelope containing the version, nonce, and ciphertext. It checks the HMAC with `hmac.compare_digest` **before** decryption. A separate key is stored in `secrets/hmac.key`. AES-GCM also authenticates the ciphertext; the additional HMAC explicitly demonstrates the hackathon requirement. The **Verify integrity** action checks the saved envelope. **Tampering demo** changes one character in a temporary copy, shows HMAC rejection, deletes that copy, and checks that the original remains valid.
+
+### Key handling
+
+Keys are random, separate from attendance, and never printed by the app. If a key goes missing, the app reports an error instead of generating a replacement that could not decrypt existing records. Local key files are for this educational prototype; production software should use a protected OS key store or dedicated key-management service.
+
+## Demonstration: evidence for each claim
+
+### 1. A student cannot change Absent to Present
+
+1. Sign out and show that the sign-in page does not display the attendance table.
+2. Sign in with the Admin or an Instructor account and mark a sample student Present. This shows that an authorized instructor can record attendance.
+3. Sign out again. A student has no account or instructor role to authenticate with, and the attendance-update API requires an authenticated session with the `attendance:mark` permission. An unauthenticated request is rejected by the server.
+4. Run the test suite to show that only supported attendance statuses are accepted and that modified saved ciphertext fails integrity verification.
+
+### 2. A student cannot read other students' private attendance
+
+1. Sign out and show that the browser displays only the login page, not the records.
+2. Explain that the `/api/records` route requires an authenticated session with `attendance:view` permission.
+3. Open `data/attendance.enc` in a text editor if you want to show the stored file: it contains the encrypted envelope, not readable student names or statuses. Do not open or share files in `secrets/`.
+4. Run the encryption test to show that the attendance can be decrypted with the correct test key and not with an incorrect key.
+
+### 3. A student cannot guess the instructor password from storage
+
+1. Show a failed login attempt; the UI rejects the password and allows at most three attempts in that session.
+2. Explain that `secrets/instructor.json` contains the username, role, and Argon2id password hash—not the password. Argon2id hashes are salted and are not decrypted during login.
+3. Run the password tests: the correct password is accepted, an incorrect password is rejected, and the stored account file does not contain the plaintext test password.
+
+## Run the tests in the browser UI
+
+After signing in, choose **Security test suite** in the sidebar. The browser shows each test result. Tests use temporary directories and generated test keys, so they do not change the real demo records or keys.
+
+The suite covers:
+
+| Test coverage | Evidence shown |
+| --- | --- |
+| Password authentication | Correct and incorrect password results; plaintext password is absent from the saved account data. |
+| RBAC and account creation | Admin creates an Instructor; Instructor cannot create accounts; duplicate usernames are rejected; old single-account files remain usable as Admin. |
+| Encryption | Correct key decrypts test data; wrong key fails; saved attendance envelope does not expose sample names. |
+| Integrity | Valid HMAC passes; modified ciphertext and modified HMAC fail. |
+| Attendance validation | Only Present and Absent statuses are accepted. |
+| Tampering demo | Modified temporary copy is rejected; the original file remains unchanged, valid, and usable. |
+
+The optional terminal command is `./.venv/bin/python -m unittest discover -s tests -v` (Windows: `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`).
+
+## Project files
 
 ```text
 SecureAttendance/
-├── main.py
-├── run_showcase.py        # start the one-command browser showcase
-├── auth.py
-├── crypto_utils.py
-├── attendance_store.py
+├── run_showcase.py        # local server and browser app
+├── main.py                # optional terminal fallback
+├── auth.py                # Argon2id accounts and RBAC
+├── crypto_utils.py        # AES-GCM and HMAC operations
+├── attendance_store.py    # encrypted attendance storage
 ├── requirements.txt
-├── README.md
-├── .gitignore
-├── web/
-│   ├── index.html
-│   ├── src/main.jsx        # React interface source
-│   ├── src/styles.css
-│   ├── assets/app.js       # bundled React app, served locally
-│   ├── package.json
-│   └── package-lock.json
-├── data/                 # generated encrypted attendance file
-├── secrets/              # generated keys and instructor hash; never commit
-└── tests/
-    └── test_secureattendance.py
+├── web/                   # React source and local bundled UI
+├── tests/                 # unittest security checks
+├── data/                  # generated encrypted attendance
+└── secrets/               # generated keys and account hashes; never commit
 ```
 
-The `data/` and `secrets/` files are generated on first run. Do not add them to version control. `.gitignore` excludes their contents. Local key-file storage is suitable only for this educational prototype. Production software should use a protected operating-system key store or a dedicated key-management service, with access control, backups, rotation, and recovery procedures.
+## Prototype limits
 
-## Install and run (macOS)
-
-Open Terminal in the `SecureAttendance` folder. These instructions use the Python 3.15 already installed on this Mac. The project constrains `cryptography` to the 44.x release line because it provides a prebuilt macOS wheel usable by this Python, so pip does not need to compile it or find system OpenSSL development files. Do this setup once:
-
-```bash
-python3 --version
-python3 -m venv .venv-mac
-source .venv-mac/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-You already created `.venv-mac` and installed the dependencies. The command to start the complete browser showcase is:
-
-```bash
-./.venv-mac/bin/python run_showcase.py
-```
-
-That is the only terminal command needed for a demonstration. It starts the local server and opens the browser. Keep that terminal window open while presenting; press Ctrl+C there when the demo is over. No Node.js command is needed at runtime. The commands `py` and `.venv\\Scripts\\Activate.ps1` are Windows-only and do not work in macOS zsh.
-
-The first run asks you to create a username and enter a password twice. Password input is hidden. Choose at least 10 characters. Registration generates the AES and HMAC keys and creates fictional sample students S101, S102, and S103 with Absent attendance for today. The app then presents the login screen.
-
-## Browser showcase
-
-The React interface provides the complete instructor workflow:
-
-1. Register the instructor on first use, or sign in with the existing account. Passwords are sent only to the local server and are stored as Argon2id hashes.
-2. View the student register after authentication. Use each row's **Present** or **Absent** button to save an encrypted attendance update.
-3. Choose **Verify integrity** to check the saved HMAC.
-4. Choose **Tampering demo** to alter a temporary copy, show that verification rejects it, then confirm the original file still verifies.
-5. Choose **Security test suite** or **Run test suite** to run all `unittest` checks and display the individual results in the browser.
-6. Sign out from the left sidebar. Three failed login attempts end the login session; restart the showcase command to begin a fresh session.
-
-The server binds to `127.0.0.1`, so this prototype is intended for a demonstration on the same computer, not a shared network deployment. The React app and styles are served from local project files. If you edit `web/src/main.jsx`, rebuild the bundled app from the `web/` directory with `npm install` and `npm run build`; normal demo runs do not need npm.
-
-**Keep the `secrets/` directory safe and backed up.** The program never silently regenerates a missing key: that would make existing encrypted records unreadable. If a key is missing, restore the original key from a secure backup. Never print or share the key files.
-
-## Hackathon demonstration
-
-1. Run `./.venv-mac/bin/python run_showcase.py` once. The browser opens to the local React app.
-2. Register an instructor in the browser on the first run, then sign in. Attendance stays hidden until sign-in succeeds.
-3. Use the **Present** or **Absent** button on a student row to update today's attendance. The dashboard refreshes and shows the new timestamp.
-4. Choose **Verify integrity** to show that the saved attendance envelope passes HMAC verification.
-5. Choose **Tampering demo** to change one ciphertext character in a temporary copy, show the HMAC rejection, and confirm that the original file remains valid.
-6. Choose **Security test suite** to run all automated tests and show each result in the browser UI.
-7. Sign out and try an incorrect password. The UI rejects it and ends the login session after three failed attempts.
-
-The demo's success comes from `verify_envelope` checking the modified copy's HMAC with the real secret key; it is not a hardcoded result.
-
-## Automated tests
-
-Run from this folder with the virtual environment active:
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-Tests use temporary directories and generated test keys, so they do not touch the app's real demo files. The test names show which checks passed. The suite covers:
-
-| Test area | What it checks |
-| --- | --- |
-| Password authentication | Correct password accepted; wrong password rejected; stored file does not contain the password and contains an Argon2id hash. |
-| Encryption | Correct key decrypts attendance; wrong key fails; saved envelope contains no sample student name in plaintext. |
-| Integrity | Untouched envelope passes HMAC; changed ciphertext and changed HMAC fail. |
-| Input validation | Only `Present` or `Absent` is accepted. |
-| Tampering demo | A modified temporary copy is rejected, the original file bytes stay unchanged, the original still verifies, and the temporary copy is removed. |
-
-The automated test suite is available from the browser dashboard. This standalone terminal command is optional:
-
-```bash
-./.venv-mac/bin/python -m unittest discover -s tests -v
-```
-
-## Security limitations and future improvements
-
-- This is an educational, single-machine prototype; a user with access to both key files and records can decrypt or forge them.
-- File permissions are best effort and differ across operating systems. `.gitignore` reduces accidental commits but is not a secure backup or access-control system.
-- The HMAC key is stored locally beside the encryption key. A production system should isolate keys in an OS key store/KMS and control which process can use them.
-- There is no multi-user role management, audit log, network transport, key rotation, or recovery mechanism. Add these only with a reviewed threat model.
-- HMAC proves the data matches a holder of the shared key; it does not provide individual non-repudiation or identify which instructor changed it.
-
-## Judge-friendly explanations
-
-**Why hash passwords instead of encrypting them?** The app needs to check a password, not recover it. A salted Argon2id hash supports verification without storing a reversible password.
-
-**Why encrypt attendance?** Encryption provides confidentiality if someone copies or reads the saved file without the key.
-
-**Why use both AES-GCM and HMAC?** GCM already detects ciphertext changes, while the separate HMAC explicitly demonstrates the requested HMAC integrity check and is verified before decryption.
-
-**Does a valid HMAC prove the instructor changed a record?** No. It proves the envelope was made by someone with the HMAC key. Authentication controls app access, but the shared local key is not a personal signature.
+- This is a single-computer educational demo. Anyone who can access both local key files and attendance can decrypt or forge records.
+- File permissions depend on the operating system. `.gitignore` helps prevent accidental commits but is not a secure backup system.
+- RBAC has Admin and Instructor roles; there is no account suspension, audit log, key rotation, or recovery process.
+- HMAC shows that the data matches someone holding the integrity key. It does not identify which individual instructor changed the data.
